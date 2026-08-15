@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f4effb">
-<title>Календарь учителя</title>
+<title>Календарь учителя Ирины Александровны</title>
 <style>
 :root{--bg:#f7f3fb;--card:rgba(255,255,255,.93);--line:#ddd2eb;--ink:#433553;--muted:#7b6d88;--accent:#8b6fd0;--accent2:#a98ae6;--green:#77b88c;--red:#d87383;--gold:#e6a845;--shadow:0 18px 50px rgba(78,56,104,.13)}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:#f6f1fb}
@@ -14,7 +14,7 @@ url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABgAAAAQACAYAAAAncZJCAAAQAElEQ
 body::after{content:"";position:fixed;inset:0;background:radial-gradient(circle at 12% 15%,rgba(178,143,235,.18),transparent 30%),radial-gradient(circle at 88% 75%,rgba(255,211,183,.16),transparent 28%);z-index:-1}
 button,input,select,textarea{font:inherit}button{cursor:pointer}.app{max-width:1450px;margin:auto;padding:18px}
 .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:14px}
-.brand{display:flex;align-items:center;gap:12px}.mark{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:white;font:bold 24px Georgia;background:linear-gradient(135deg,#b88de5,#896ac8);box-shadow:var(--shadow)}.eyebrow{margin:0;color:#927da4;text-transform:uppercase;letter-spacing:.14em;font-size:11px}h1{margin:2px 0 0;font:28px Georgia,serif}
+.brand{display:flex;align-items:center;gap:12px}.mark{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;color:white;font:bold 24px Georgia;background:linear-gradient(135deg,#b88de5,#896ac8);box-shadow:var(--shadow)}.eyebrow{margin:0;color:#927da4;text-transform:uppercase;letter-spacing:.14em;font-size:11px}h1{margin:2px 0 0;font:28px Georgia,serif}.brand-title{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.brand-lavender{font-size:28px;line-height:1}
 .clock{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);padding:10px 14px;border-radius:16px;box-shadow:var(--shadow)}.clock span{display:block;font-size:11px;color:var(--muted)}.clock strong{font-size:16px}
 .nav,.filterbar,.calendar-toolbar,.card{background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);backdrop-filter:blur(10px)}
 .nav{display:flex;gap:6px;align-items:center;padding:7px;margin-bottom:16px;overflow:auto}.nav button{border:0;background:transparent;padding:11px 14px;border-radius:12px;color:#6d5c7a;white-space:nowrap}.nav button.active{background:#eee6fb;color:#6a4baa;font-weight:700}.spacer{flex:1}
@@ -31,13 +31,13 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.app{max-width:1
 .toast{position:fixed;right:20px;bottom:20px;background:#433553;color:white;padding:12px 16px;border-radius:12px;opacity:0;transform:translateY(10px);pointer-events:none;transition:.2s;z-index:100}.toast.show{opacity:1;transform:none}
 .sync-note{font-size:12px;color:var(--muted);margin-top:8px}.hidden{display:none!important}
 @media(max-width:900px){.filterbar{grid-template-columns:1fr 1fr}.summary{grid-template-columns:1fr 1fr}.today-layout{grid-template-columns:1fr}}
-@media(max-width:640px){.app{padding:10px}.topbar{align-items:flex-start}.clock{display:none}.filterbar{grid-template-columns:1fr}.summary{grid-template-columns:1fr}.period h2{font-size:24px}.day{min-height:112px;padding:5px}.lesson-top{display:block}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
+@media(max-width:640px){.app{padding:10px;overflow-x:hidden}.topbar{align-items:flex-start}.clock{display:none}.nav{flex-wrap:wrap;overflow:visible}.nav .spacer{display:none}.nav button{flex:1 1 calc(50% - 6px);min-width:0;text-align:center;padding:10px 12px}.filterbar{grid-template-columns:1fr}.summary{grid-template-columns:1fr}.calendar-toolbar,.period,.actions,.views{width:100%}.calendar-toolbar{gap:10px}.actions{justify-content:space-between}.views{display:grid;grid-template-columns:repeat(3,1fr)}.views button{width:100%}.period h2{font-size:24px;line-height:1.15}.calendar-card{overflow:hidden}.weekdays,.month-grid{grid-template-columns:repeat(7,minmax(0,1fr))}.weekday{padding:8px 2px;font-size:11px}.day{min-height:88px;padding:4px}.day-head{margin-bottom:4px}.date-num{width:24px;height:24px;font-size:13px}.plus-mini{font-size:16px;padding:1px 4px}.lesson{padding:4px 5px;margin:3px 0;border-radius:8px}.lesson-top{display:block;font-size:10px}.lesson-name{font-size:11px}.today-main,.today-side{padding:14px}.today-side{min-height:auto;align-items:flex-start}.bouquet{width:88px;max-width:28vw}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}}
 </style>
 </head>
 <body>
 <div class="app">
 <header class="topbar">
-  <div class="brand"><div class="mark">К</div><div><p class="eyebrow">Личное расписание</p><h1>Календарь учителя</h1></div></div>
+  <div class="brand"><div class="mark">К</div><div><p class="eyebrow">Личное расписание</p><div class="brand-title"><h1>Календарь учителя Ирины Александровны</h1><span class="brand-lavender" aria-hidden="true">🪻</span></div></div></div>
   <div class="clock"><button class="btn" id="tzPrev">‹</button><div><span id="zoneName">Екатеринбург</span><strong id="localClock">00:00:00</strong></div><button class="btn" id="tzNext">›</button><div><span>МСК</span><strong id="moscowClock">00:00</strong></div></div>
 </header>
 
@@ -227,7 +227,7 @@ function openLesson(l=null){S.editId=l?.id||null;S.stars=Number(l?.stars||0);S.c
 async function saveLesson(e){e.preventDefault();let base={id:S.editId||uid(),studentId:$('studentId').value,studentName:$('studentName').value.trim(),date:$('lessonDate').value,time:$('lessonTime').value,duration:Number($('duration').value||60),color:S.color,price:Number($('price').value||0),paymentStatus:$('paymentStatus').value,status:$('lessonStatus').value,format:$('lessonFormat').value,meetingLink:$('meetingLink').value.trim(),lessonResult:$('lessonResult').value.trim(),homework:$('homework').value.trim(),stars:S.stars,note:$('note').value.trim(),seriesId:$('seriesId').value||null,updatedAt:new Date().toISOString()};if(!base.studentName||!base.date||!base.time)return toast('Заполни имя, дату и время');if(S.editId){let old=S.lessons.find(x=>x.id===S.editId),scope=document.querySelector('input[name=scope]:checked')?.value;if(old?.seriesId&&scope==='series')S.lessons=S.lessons.map(x=>x.seriesId===old.seriesId?{...x,...base,id:x.id,date:x.date,time:base.time}:x);else S.lessons=S.lessons.map(x=>x.id===S.editId?base:x)}else{let rec=$('recurrence').value,end=$('recurrenceEnd').value;if(rec!=='none'&&end){let series=uid(),cur=parseDate(base.date),endD=parseDate(end),step=rec==='weekly'?7:14;while(cur<=endD){S.lessons.push({...base,id:uid(),seriesId:series,date:iso(cur)});cur.setDate(cur.getDate()+step)}}else S.lessons.push(base)}await saveLessons();close('lessonModal');render();toast('Сохранено')}
 async function deleteLesson(){if(!S.editId||!confirm('Удалить урок?'))return;let old=S.lessons.find(x=>x.id===S.editId),scope=document.querySelector('input[name=scope]:checked')?.value;if(old?.seriesId&&scope==='series')S.lessons=S.lessons.filter(x=>x.seriesId!==old.seriesId);else S.lessons=S.lessons.filter(x=>x.id!==S.editId);await saveLessons();close('lessonModal');render();toast('Удалено')}
 function openStudent(s=null){$('editingStudentId').value=s?.id||'';$('studentModalTitle').textContent=s?'Редактировать ученика':'Новый ученик';$('profileName').value=s?.name||'';$('parentName').value=s?.parent||'';$('studentSubject').value=s?.subject||'';$('studentContact').value=s?.contact||'';$('defaultDuration').value=s?.defaultDuration||60;$('defaultPrice').value=s?.defaultPrice||0;$('defaultLink').value=s?.defaultLink||'';$('studentNotes').value=s?.notes||'';$('deleteStudent').classList.toggle('hidden',!s);$('studentModal').classList.add('open')}
-async function saveStudent(e){e.preventDefault();let id=$('editingStudentId').value||uid(),obj={id,name:$('profileName').value.trim(),parent:$('parentName').value.trim(),subject:$('studentSubject').value.trim(),contact:$('studentContact').value.trim(),defaultDuration:Number($('defaultDuration').value||60),defaultPrice:Number($('defaultPrice').value||0),defaultLink:$('defaultLink').value.trim(),notes:$('studentNotes').value.trim(),updatedAt:new Date().toISOString()};if(!obj.name)return;let i=S.students.findIndex(x=>x.id===id);if(i>=0)S.students[i]=obj;else S.students.push(obj);await saveStudents();close('studentModal');render();toast('Ученик сохранён')}
+async function saveStudent(e){e.preventDefault();let id=$('editingStudentId').value||uid(),obj={id,name:$('profileName').value.trim(),parent:$('parentName').value.trim(),subject:$('studentSubject').value.trim(),contact:$('studentContact').value.trim(),defaultDuration:Number($('defaultDuration').value||60),defaultPrice:Number($('defaultPrice').value||0),defaultLink:$('defaultLink').value.trim(),notes:$('studentNotes').value.trim()};if(!obj.name)return;let i=S.students.findIndex(x=>x.id===id);if(i>=0)S.students[i]=obj;else S.students.push(obj);await saveStudents();close('studentModal');render();toast('Ученик сохранён')}
 async function deleteStudent(){let id=$('editingStudentId').value;if(!id||!confirm('Удалить карточку ученика? Уроки останутся.'))return;S.students=S.students.filter(x=>x.id!==id);await saveStudents();close('studentModal');render()}
 function close(id){$(id).classList.remove('open')}
 function exportData(){let blob=new Blob([JSON.stringify({version:2,lessons:S.lessons,students:S.students},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='teacher-calendar-backup.json';a.click();URL.revokeObjectURL(u)}
@@ -269,17 +269,6 @@ async function fetchRemote(kind){
   return snap.docs.map(d=>({...d.data(),id:d.id}));
 }
 
-function mergeLocalAndRemote(remote, local){
-  const map=new Map();
-  for(const item of remote||[]) if(item?.id) map.set(item.id,item);
-  for(const item of local||[]){
-    if(!item?.id) continue;
-    const prev=map.get(item.id);
-    map.set(item.id,{...(prev||{}),...item});
-  }
-  return [...map.values()];
-}
-
 async function loadAll(){
   const localL=localLessons(), localS=localStudents();
   if(!S.db){
@@ -288,16 +277,23 @@ async function loadAll(){
   try{
     const [remoteS,remoteL]=await Promise.all([fetchRemote('students'),fetchRemote('lessons')]);
 
-    // Объединяем старые локальные записи с уже существующими облачными.
-    // Поэтому локальный Реналь не потеряется даже если в Firebase уже есть тестовые документы.
-    S.students=mergeLocalAndRemote(remoteS,localS);
-    S.lessons=mergeLocalAndRemote(remoteL,localL);
+    // Одноразовая безопасная миграция старых записей из localStorage:
+    // если облако пустое, а в текущем браузере записи есть — переносим их в Firebase.
+    if(remoteS.length===0 && localS.length>0){
+      S.students=localS;
+      await syncArrayToCollection('students',S.students);
+    }else{
+      S.students=remoteS;
+      localStorage.setItem(LS.students,JSON.stringify(S.students));
+    }
 
-    localStorage.setItem(LS.students,JSON.stringify(S.students));
-    localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
-
-    if(S.students.length) await syncArrayToCollection('students',S.students);
-    if(S.lessons.length) await syncArrayToCollection('lessons',S.lessons);
+    if(remoteL.length===0 && localL.length>0){
+      S.lessons=localL;
+      await syncArrayToCollection('lessons',S.lessons);
+    }else{
+      S.lessons=remoteL;
+      localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
+    }
 
     startRealtime();
     S.firebaseReady=true;
