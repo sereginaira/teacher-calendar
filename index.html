@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f3effa">
+  <title>Календарь учителя</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true">К</div>
+        <div><p class="eyebrow">Личное расписание</p><h1>Календарь учителя</h1></div>
+      </div>
+      <div class="clock-panel" aria-label="Текущее время">
+        <button class="icon-button small" id="tzPrev" aria-label="Предыдущий часовой пояс">‹</button>
+        <div class="clock-main"><span id="zoneName">Екатеринбург</span><strong id="localClock">00:00:00</strong></div>
+        <button class="icon-button small" id="tzNext" aria-label="Следующий часовой пояс">›</button>
+        <div class="moscow-clock"><span>МСК</span><strong id="moscowClock">00:00</strong></div>
+      </div>
+    </header>
+
+    <nav class="main-nav" aria-label="Разделы приложения">
+      <button data-section="today" class="nav-button">Сегодня</button>
+      <button data-section="calendar" class="nav-button active">Календарь</button>
+      <button data-section="students" class="nav-button">Ученики</button>
+      <button data-section="finance" class="nav-button">Финансы</button>
+      <span class="nav-spacer"></span>
+      <button id="exportData" class="nav-button">Скачать копию</button>
+      <button id="importData" class="nav-button">Восстановить</button>
+      <input id="importFile" type="file" accept="application/json" hidden>
+    </nav>
+
+    <main>
+      <section id="todaySection" class="app-section" hidden></section>
+      <section id="studentsSection" class="app-section" hidden></section>
+      <section id="financeSection" class="app-section" hidden></section>
+      <section id="calendarSection" class="app-section">
+      <div class="filter-bar">
+        <label class="search-field"><span class="sr-only">Поиск</span><input id="calendarSearch" type="search" placeholder="Найти ученика или группу"></label>
+        <select id="studentFilter" aria-label="Фильтр по ученику"><option value="">Все ученики</option></select>
+        <select id="statusFilter" aria-label="Фильтр по статусу"><option value="">Все статусы</option><option value="planned">Запланирован</option><option value="confirmed">Подтверждён</option><option value="completed">Проведён</option><option value="cancelledStudent">Отменён учеником</option><option value="cancelledTeacher">Отменён преподавателем</option><option value="missed">Пропущен</option></select>
+        <label class="check-filter"><input id="unpaidOnly" type="checkbox"> Только неоплаченные</label>
+      </div>
+      <section class="calendar-toolbar" aria-label="Управление календарём">
+        <div class="period-controls">
+          <button class="secondary-button" id="todayButton">Сегодня</button>
+          <div class="arrow-group">
+            <button class="icon-button" id="previousPeriod" aria-label="Предыдущий период">‹</button>
+            <button class="icon-button" id="nextPeriod" aria-label="Следующий период">›</button>
+          </div>
+          <h2 id="periodTitle" aria-live="polite"></h2>
+        </div>
+        <div class="toolbar-actions">
+          <div class="view-switcher" role="group" aria-label="Вид календаря">
+            <button data-view="month">Месяц</button><button data-view="week">Неделя</button><button data-view="day">День</button>
+          </div>
+          <button class="primary-button" id="addLesson"><span aria-hidden="true">＋</span> Добавить урок</button>
+        </div>
+      </section>
+
+      <section id="summary" class="day-summary" hidden></section>
+      <section id="calendar" class="calendar-card" aria-label="Календарь"></section>
+      </section>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="lessonModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <div><p class="eyebrow" id="modalEyebrow">Новое событие</p><h2 id="modalTitle">Добавить урок</h2></div>
+        <button class="icon-button" data-close-modal aria-label="Закрыть">×</button>
+      </header>
+      <form id="lessonForm" novalidate>
+        <input type="hidden" id="editingKind"><input type="hidden" id="editingId"><input type="hidden" id="editingOriginalStart">
+        <div class="field full"><label for="studentId">Ученик или группа</label><select id="studentId"><option value="">Без карточки ученика</option></select></div>
+        <div class="field full"><label for="studentName">Название урока <span>*</span></label><input id="studentName" autocomplete="off" maxlength="120" required><small class="error" data-error="name"></small></div>
+        <div class="form-grid">
+          <div class="field"><label for="lessonDate">Дата <span>*</span></label><input id="lessonDate" type="date" required><small class="error" data-error="date"></small></div>
+          <div class="field"><label for="lessonTime">Начало <span>*</span></label><input id="lessonTime" type="time" required><small class="error" data-error="time"></small></div>
+        </div>
+        <div class="field full"><label for="duration">Длительность, минут <span>*</span></label><input id="duration" type="number" min="1" step="5" value="60" required><div class="duration-pills" aria-label="Быстрый выбор длительности"><button type="button" data-duration="30">30</button><button type="button" data-duration="45">45</button><button type="button" data-duration="60">60</button><button type="button" data-duration="90">90</button><button type="button" data-duration="120">120</button></div><small class="error" data-error="duration"></small></div>
+        <div class="field full"><span class="field-label">Цвет</span><div id="colorPicker" class="color-picker" role="radiogroup" aria-label="Цвет урока"></div></div>
+        <div class="form-grid">
+          <div class="field"><label for="price">Стоимость, ₽</label><input id="price" type="number" min="0" step="0.01" inputmode="decimal" value="0"><small class="error" data-error="price"></small></div>
+          <div class="field"><label for="paymentStatus">Оплата</label><select id="paymentStatus"><option value="unpaid">Не оплачено</option><option value="partial">Частично</option><option value="paid">Оплачено</option><option value="package">Абонемент</option></select></div>
+        </div>
+        <div class="form-grid"><div class="field"><label for="lessonStatus">Статус занятия</label><select id="lessonStatus"><option value="planned">Запланирован</option><option value="confirmed">Подтверждён</option><option value="completed">Проведён</option><option value="cancelledStudent">Отменён учеником</option><option value="cancelledTeacher">Отменён преподавателем</option><option value="missed">Пропущен</option></select></div><div class="field"><label for="lessonFormat">Формат</label><select id="lessonFormat"><option value="online">Онлайн</option><option value="offline">Очно</option></select></div></div>
+        <div class="field full"><label for="meetingLink">Ссылка или адрес</label><input id="meetingLink" maxlength="500" placeholder="https://… или адрес занятия"></div>
+        <div class="field full"><label for="lessonResult">Что прошли</label><textarea id="lessonResult" rows="2" maxlength="1000"></textarea></div>
+        <div class="field full"><label for="homework">Домашнее задание</label><textarea id="homework" rows="2" maxlength="1000"></textarea></div>
+        <div class="field full"><span class="field-label">Звёзды за успеваемость</span><div id="starRating" class="star-rating" role="radiogroup" aria-label="Звёзды за успеваемость"></div><small class="star-hint">Оценка личного прогресса ученика — от 0 до 5 звёзд</small></div>
+        <div class="field full"><label for="note">Личная заметка <small>— видна только преподавателю</small></label><textarea id="note" rows="2" maxlength="1000"></textarea></div>
+        <fieldset id="recurrenceFields"><legend>Повторение</legend><div class="form-grid"><div class="field"><label for="recurrence">Частота</label><select id="recurrence"><option value="none">Не повторять</option><option value="weekly">Каждую неделю</option><option value="biweekly">Раз в две недели</option></select></div><div class="field" id="recurrenceEndField" hidden><label for="recurrenceEnd">Повторять до <span>*</span></label><input id="recurrenceEnd" type="date"><small class="error" data-error="recurrenceEnd"></small></div></div></fieldset>
+        <div id="editScope" class="scope-box" hidden><p>Применить изменения:</p><label><input type="radio" name="scope" value="instance" checked> Только к этому уроку</label><label><input type="radio" name="scope" value="series"> Ко всей серии</label></div>
+        <footer class="modal-actions">
+          <button type="button" class="danger-button" id="deleteLesson" hidden>Удалить</button>
+          <span class="action-spacer"></span><button type="button" class="secondary-button" data-close-modal>Отмена</button><button type="submit" class="primary-button">Сохранить</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="studentModal" hidden>
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="studentModalTitle">
+      <header class="modal-header"><div><p class="eyebrow">Карточка</p><h2 id="studentModalTitle">Новый ученик</h2></div><button class="icon-button" data-close-student aria-label="Закрыть">×</button></header>
+      <form id="studentForm" novalidate><input id="editingStudentId" type="hidden">
+        <div class="form-grid"><div class="field"><label for="profileName">Имя ученика или группы *</label><input id="profileName" required></div><div class="field"><label for="parentName">Родитель</label><input id="parentName"></div></div>
+        <div class="form-grid"><div class="field"><label for="studentSubject">Предмет и класс</label><input id="studentSubject"></div><div class="field"><label for="studentContact">Телефон или Telegram</label><input id="studentContact"></div></div>
+        <div class="form-grid"><div class="field"><label for="defaultDuration">Обычная длительность</label><input id="defaultDuration" type="number" min="1" value="60"></div><div class="field"><label for="defaultPrice">Обычная стоимость, ₽</label><input id="defaultPrice" type="number" min="0" step="0.01" value="0"></div></div>
+        <div class="field"><label for="defaultLink">Постоянная ссылка или адрес</label><input id="defaultLink"></div><div class="field"><label for="studentNotes">Личные заметки</label><textarea id="studentNotes" rows="3"></textarea></div>
+        <footer class="modal-actions"><button type="button" class="danger-button" id="deleteStudent" hidden>Удалить</button><span class="action-spacer"></span><button type="button" class="secondary-button" data-close-student>Отмена</button><button class="primary-button" type="submit">Сохранить</button></footer>
+      </form>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="deleteModal" hidden>
+    <section class="modal confirm-modal" role="dialog" aria-modal="true" aria-labelledby="deleteTitle">
+      <header class="modal-header"><div><p class="eyebrow">Подтверждение</p><h2 id="deleteTitle">Удалить урок?</h2></div><button class="icon-button" data-close-delete aria-label="Закрыть">×</button></header>
+      <p id="deleteText" class="confirm-text"></p><div id="deleteOptions" class="delete-options"></div>
+      <footer class="modal-actions"><span class="action-spacer"></span><button class="secondary-button" data-close-delete>Отмена</button></footer>
+    </section>
+  </div>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="script.js"></script>
+</body>
+</html>
