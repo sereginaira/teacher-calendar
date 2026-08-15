@@ -47,7 +47,7 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.app{max-width:1
   <button data-section="students">Ученики</button>
   <button data-section="finance">Финансы</button>
   <span class="spacer"></span>
-  <button id="syncBtn">Синхронизация</button>
+  <button id="syncBtn">Firebase ✓</button>
   <button id="exportBtn">Скачать копию</button>
   <button id="importBtn">Восстановить</button>
   <input id="importFile" type="file" accept="application/json" hidden>
@@ -141,24 +141,50 @@ button,input,select,textarea{font:inherit}button{cursor:pointer}.app{max-width:1
 </div></div>
 
 <div class="modal-bg" id="syncModal"><div class="modal">
-  <div class="modal-head"><div><p class="eyebrow">Общие записи на устройствах</p><h2>Синхронизация</h2></div><button class="close" data-close-sync>×</button></div>
-  <form id="syncForm">
-    <div class="field"><label>Supabase URL</label><input id="supabaseUrl" placeholder="https://...supabase.co"></div>
-    <div class="field"><label>Supabase anon key</label><textarea id="supabaseKey"></textarea></div>
-    <div class="field"><label>Ключ календаря</label><input id="workspaceKey" placeholder="например irina-calendar"></div>
-    <p class="sync-note">Если поля пустые — календарь работает через localStorage только на этом браузере. Для разных компьютеров нужны Supabase URL + anon key + одинаковый ключ календаря.</p>
-    <div class="modal-actions"><button type="button" class="btn danger" id="disableSync">Отключить</button><span class="spacer"></span><button type="button" class="btn" data-close-sync>Отмена</button><button class="btn primary" type="submit">Сохранить</button></div>
-  </form>
+  <div class="modal-head"><div><p class="eyebrow">Облачное хранение</p><h2>Firebase Firestore</h2></div><button class="close" data-close-sync>×</button></div>
+  <div style="padding:18px 20px 20px">
+    <div class="card" style="padding:16px;margin-bottom:12px">
+      <strong id="firebaseStatus">Подключение…</strong>
+      <p class="sync-note" id="firebaseStatusText">Проверяю соединение с Firebase.</p>
+    </div>
+    <p class="sync-note">
+      Новые ученики, уроки, домашние задания, статусы, цены и звёзды автоматически сохраняются в Firestore.
+      На другом компьютере достаточно открыть этот же сайт — данные загрузятся из облака.
+    </p>
+    <div class="modal-actions">
+      <button type="button" class="btn" id="migrateLocalBtn">Перенести локальные данные в Firebase</button>
+      <span class="spacer"></span>
+      <button type="button" class="btn primary" data-close-sync>Готово</button>
+    </div>
+  </div>
 </div></div>
 
 <div class="toast" id="toast"></div>
 
 <script type="module">
-import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
+import {
+  getFirestore, collection, doc, setDoc, deleteDoc, getDocs,
+  query, where, onSnapshot, writeBatch
+} from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 const COLORS=['#e2a24a','#72b1ad','#9277c3','#cf7872','#7599ca','#87a86e','#c17fa6','#ae956a'];
 const STATUS={planned:'Запланирован',confirmed:'Подтверждён',completed:'Проведён',cancelledStudent:'Отменён учеником',cancelledTeacher:'Отменён преподавателем',missed:'Пропущен'};
-const LS={lessons:'ltc_lessons_v2',students:'ltc_students_v2',config:'ltc_config_v2'};
-const S={date:new Date(),view:'month',section:'calendar',lessons:[],students:[],editId:null,stars:0,color:COLORS[1],supabase:null,config:JSON.parse(localStorage.getItem(LS.config)||'{}')};
+const LS={lessons:'ltc_lessons_v2',students:'ltc_students_v2'};
+const FIREBASE_CALENDAR_ID='irina-main';
+const firebaseConfig={
+  apiKey:"AIzaSyAEXj7Ks9jWQYhghEVxhfkDIZECcjYWpCI",
+  authDomain:"teacher-calendar-eda68.firebaseapp.com",
+  projectId:"teacher-calendar-eda68",
+  storageBucket:"teacher-calendar-eda68.firebasestorage.app",
+  messagingSenderId:"554854078957",
+  appId:"1:554854078957:web:6c4e6d29aa584ca5bd6fe4",
+  measurementId:"G-EF27H9HEHB"
+};
+const S={
+  date:new Date(),view:'month',section:'calendar',lessons:[],students:[],
+  editId:null,stars:0,color:COLORS[1],db:null,
+  unsubStudents:null,unsubLessons:null,firebaseReady:false
+};
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function iso(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
 function parseDate(s){return new Date(s+'T00:00:00')} function uid(){return crypto.randomUUID()}
@@ -177,7 +203,7 @@ function bind(){
  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>close('lessonModal'));document.querySelectorAll('[data-close-student]').forEach(b=>b.onclick=()=>close('studentModal'));document.querySelectorAll('[data-close-sync]').forEach(b=>b.onclick=()=>close('syncModal'));
  $('deleteLesson').onclick=deleteLesson;$('deleteStudent').onclick=deleteStudent;
  $('exportBtn').onclick=exportData;$('importBtn').onclick=()=>$('importFile').click();$('importFile').onchange=importData;
- $('syncBtn').onclick=openSync;$('syncForm').onsubmit=saveSync;$('disableSync').onclick=disableSync;
+ $('syncBtn').onclick=openSync;$('migrateLocalBtn').onclick=migrateLocalNow;
  document.querySelectorAll('.modal-bg').forEach(m=>m.onclick=e=>{if(e.target===m)m.classList.remove('open')});
 }
 function render(){document.querySelectorAll('.nav button[data-section]').forEach(b=>b.classList.toggle('active',b.dataset.section===S.section));['today','calendar','students','finance'].forEach(x=>$(x+'Section').classList.toggle('hidden',S.section!==x));document.querySelectorAll('.views button').forEach(b=>b.classList.toggle('active',b.dataset.view===S.view));fillStudentChoices();if(S.section==='calendar'){renderSummary();renderCalendar()}if(S.section==='today')renderToday();if(S.section==='students')renderStudents();if(S.section==='finance')renderFinance()}
@@ -201,18 +227,161 @@ function openLesson(l=null){S.editId=l?.id||null;S.stars=Number(l?.stars||0);S.c
 async function saveLesson(e){e.preventDefault();let base={id:S.editId||uid(),studentId:$('studentId').value,studentName:$('studentName').value.trim(),date:$('lessonDate').value,time:$('lessonTime').value,duration:Number($('duration').value||60),color:S.color,price:Number($('price').value||0),paymentStatus:$('paymentStatus').value,status:$('lessonStatus').value,format:$('lessonFormat').value,meetingLink:$('meetingLink').value.trim(),lessonResult:$('lessonResult').value.trim(),homework:$('homework').value.trim(),stars:S.stars,note:$('note').value.trim(),seriesId:$('seriesId').value||null,updatedAt:new Date().toISOString()};if(!base.studentName||!base.date||!base.time)return toast('Заполни имя, дату и время');if(S.editId){let old=S.lessons.find(x=>x.id===S.editId),scope=document.querySelector('input[name=scope]:checked')?.value;if(old?.seriesId&&scope==='series')S.lessons=S.lessons.map(x=>x.seriesId===old.seriesId?{...x,...base,id:x.id,date:x.date,time:base.time}:x);else S.lessons=S.lessons.map(x=>x.id===S.editId?base:x)}else{let rec=$('recurrence').value,end=$('recurrenceEnd').value;if(rec!=='none'&&end){let series=uid(),cur=parseDate(base.date),endD=parseDate(end),step=rec==='weekly'?7:14;while(cur<=endD){S.lessons.push({...base,id:uid(),seriesId:series,date:iso(cur)});cur.setDate(cur.getDate()+step)}}else S.lessons.push(base)}await saveLessons();close('lessonModal');render();toast('Сохранено')}
 async function deleteLesson(){if(!S.editId||!confirm('Удалить урок?'))return;let old=S.lessons.find(x=>x.id===S.editId),scope=document.querySelector('input[name=scope]:checked')?.value;if(old?.seriesId&&scope==='series')S.lessons=S.lessons.filter(x=>x.seriesId!==old.seriesId);else S.lessons=S.lessons.filter(x=>x.id!==S.editId);await saveLessons();close('lessonModal');render();toast('Удалено')}
 function openStudent(s=null){$('editingStudentId').value=s?.id||'';$('studentModalTitle').textContent=s?'Редактировать ученика':'Новый ученик';$('profileName').value=s?.name||'';$('parentName').value=s?.parent||'';$('studentSubject').value=s?.subject||'';$('studentContact').value=s?.contact||'';$('defaultDuration').value=s?.defaultDuration||60;$('defaultPrice').value=s?.defaultPrice||0;$('defaultLink').value=s?.defaultLink||'';$('studentNotes').value=s?.notes||'';$('deleteStudent').classList.toggle('hidden',!s);$('studentModal').classList.add('open')}
-async function saveStudent(e){e.preventDefault();let id=$('editingStudentId').value||uid(),obj={id,name:$('profileName').value.trim(),parent:$('parentName').value.trim(),subject:$('studentSubject').value.trim(),contact:$('studentContact').value.trim(),defaultDuration:Number($('defaultDuration').value||60),defaultPrice:Number($('defaultPrice').value||0),defaultLink:$('defaultLink').value.trim(),notes:$('studentNotes').value.trim()};if(!obj.name)return;let i=S.students.findIndex(x=>x.id===id);if(i>=0)S.students[i]=obj;else S.students.push(obj);await saveStudents();close('studentModal');render();toast('Ученик сохранён')}
+async function saveStudent(e){e.preventDefault();let id=$('editingStudentId').value||uid(),obj={id,name:$('profileName').value.trim(),parent:$('parentName').value.trim(),subject:$('studentSubject').value.trim(),contact:$('studentContact').value.trim(),defaultDuration:Number($('defaultDuration').value||60),defaultPrice:Number($('defaultPrice').value||0),defaultLink:$('defaultLink').value.trim(),notes:$('studentNotes').value.trim(),updatedAt:new Date().toISOString()};if(!obj.name)return;let i=S.students.findIndex(x=>x.id===id);if(i>=0)S.students[i]=obj;else S.students.push(obj);await saveStudents();close('studentModal');render();toast('Ученик сохранён')}
 async function deleteStudent(){let id=$('editingStudentId').value;if(!id||!confirm('Удалить карточку ученика? Уроки останутся.'))return;S.students=S.students.filter(x=>x.id!==id);await saveStudents();close('studentModal');render()}
 function close(id){$(id).classList.remove('open')}
 function exportData(){let blob=new Blob([JSON.stringify({version:2,lessons:S.lessons,students:S.students},null,2)],{type:'application/json'}),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download='teacher-calendar-backup.json';a.click();URL.revokeObjectURL(u)}
 async function importData(e){let f=e.target.files[0];if(!f)return;try{let d=JSON.parse(await f.text());S.lessons=d.lessons||[];S.students=d.students||[];await saveLessons();await saveStudents();render();toast('Копия восстановлена')}catch{toast('Не удалось восстановить')}e.target.value=''}
-function openSync(){$('supabaseUrl').value=S.config.url||'';$('supabaseKey').value=S.config.key||'';$('workspaceKey').value=S.config.workspace||'';$('syncModal').classList.add('open')}
-async function saveSync(e){e.preventDefault();S.config={url:$('supabaseUrl').value.trim(),key:$('supabaseKey').value.trim(),workspace:$('workspaceKey').value.trim()};localStorage.setItem(LS.config,JSON.stringify(S.config));await setupStore();await loadAll();close('syncModal');render();toast(S.supabase?'Синхронизация включена':'Локальный режим')}
-async function disableSync(){S.config={};localStorage.setItem(LS.config,'{}');S.supabase=null;await loadAll();close('syncModal');render();toast('Синхронизация отключена')}
-async function setupStore(){S.supabase=null;if(S.config.url&&S.config.key&&S.config.workspace){try{S.supabase=createClient(S.config.url,S.config.key);let r=await S.supabase.from('calendar_data').select('workspace').eq('workspace',S.config.workspace).limit(1);if(r.error)throw r.error}catch(e){console.warn(e);S.supabase=null;toast('Supabase не подключён')}}}
-async function loadAll(){if(S.supabase){let r=await S.supabase.from('calendar_data').select('*').eq('workspace',S.config.workspace).single();if(r.data){S.lessons=r.data.lessons||[];S.students=r.data.students||[]}else{S.lessons=JSON.parse(localStorage.getItem(LS.lessons)||'[]');S.students=JSON.parse(localStorage.getItem(LS.students)||'[]')}}else{S.lessons=JSON.parse(localStorage.getItem(LS.lessons)||'[]');S.students=JSON.parse(localStorage.getItem(LS.students)||'[]')}}
-async function saveLessons(){localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));if(S.supabase)await pushAll()} async function saveStudents(){localStorage.setItem(LS.students,JSON.stringify(S.students));if(S.supabase)await pushAll()}
-async function pushAll(){let p={workspace:S.config.workspace,lessons:S.lessons,students:S.students,updated_at:new Date().toISOString()};let r=await S.supabase.from('calendar_data').upsert(p,{onConflict:'workspace'});if(r.error){console.warn(r.error);toast('Ошибка синхронизации')}}
+function openSync(){
+  updateFirebaseStatus();
+  $('syncModal').classList.add('open')
+}
+function updateFirebaseStatus(){
+  const title=$('firebaseStatus'), text=$('firebaseStatusText');
+  if(!title||!text)return;
+  if(S.firebaseReady){
+    title.textContent='Firebase подключён ✓';
+    text.textContent=`Данные синхронизируются с проектом teacher-calendar-eda68. Учеников: ${S.students.length}, уроков: ${S.lessons.length}.`;
+  }else{
+    title.textContent='Firebase пока недоступен';
+    text.textContent='Календарь продолжает хранить резервную копию в этом браузере. Проверь интернет и правила Firestore.';
+  }
+}
+async function setupStore(){
+  try{
+    const app=initializeApp(firebaseConfig);
+    S.db=getFirestore(app);
+    S.firebaseReady=true;
+  }catch(e){
+    console.error('Firebase init error',e);
+    S.db=null;
+    S.firebaseReady=false;
+    toast('Firebase не подключился — работаю локально');
+  }
+}
+function localLessons(){try{return JSON.parse(localStorage.getItem(LS.lessons)||'[]')}catch{return []}}
+function localStudents(){try{return JSON.parse(localStorage.getItem(LS.students)||'[]')}catch{return []}}
+
+async function fetchRemote(kind){
+  if(!S.db)return [];
+  const q=query(collection(S.db,kind),where('calendarId','==',FIREBASE_CALENDAR_ID));
+  const snap=await getDocs(q);
+  return snap.docs.map(d=>({...d.data(),id:d.id}));
+}
+
+function mergeLocalAndRemote(remote, local){
+  const map=new Map();
+  for(const item of remote||[]) if(item?.id) map.set(item.id,item);
+  for(const item of local||[]){
+    if(!item?.id) continue;
+    const prev=map.get(item.id);
+    map.set(item.id,{...(prev||{}),...item});
+  }
+  return [...map.values()];
+}
+
+async function loadAll(){
+  const localL=localLessons(), localS=localStudents();
+  if(!S.db){
+    S.lessons=localL; S.students=localS; return;
+  }
+  try{
+    const [remoteS,remoteL]=await Promise.all([fetchRemote('students'),fetchRemote('lessons')]);
+
+    // Объединяем старые локальные записи с уже существующими облачными.
+    // Поэтому локальный Реналь не потеряется даже если в Firebase уже есть тестовые документы.
+    S.students=mergeLocalAndRemote(remoteS,localS);
+    S.lessons=mergeLocalAndRemote(remoteL,localL);
+
+    localStorage.setItem(LS.students,JSON.stringify(S.students));
+    localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
+
+    if(S.students.length) await syncArrayToCollection('students',S.students);
+    if(S.lessons.length) await syncArrayToCollection('lessons',S.lessons);
+
+    startRealtime();
+    S.firebaseReady=true;
+  }catch(e){
+    console.error('Firestore load error',e);
+    S.firebaseReady=false;
+    S.lessons=localL; S.students=localS;
+    toast('Не удалось загрузить Firebase — показана локальная копия');
+  }
+}
+
+function startRealtime(){
+  if(!S.db)return;
+  if(S.unsubStudents)S.unsubStudents();
+  if(S.unsubLessons)S.unsubLessons();
+
+  S.unsubStudents=onSnapshot(
+    query(collection(S.db,'students'),where('calendarId','==',FIREBASE_CALENDAR_ID)),
+    snap=>{
+      S.students=snap.docs.map(d=>({...d.data(),id:d.id}));
+      localStorage.setItem(LS.students,JSON.stringify(S.students));
+      render();
+      updateFirebaseStatus();
+    },
+    e=>{console.error(e);S.firebaseReady=false;updateFirebaseStatus()}
+  );
+
+  S.unsubLessons=onSnapshot(
+    query(collection(S.db,'lessons'),where('calendarId','==',FIREBASE_CALENDAR_ID)),
+    snap=>{
+      S.lessons=snap.docs.map(d=>({...d.data(),id:d.id}));
+      localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
+      render();
+      updateFirebaseStatus();
+    },
+    e=>{console.error(e);S.firebaseReady=false;updateFirebaseStatus()}
+  );
+}
+
+async function syncArrayToCollection(kind,items){
+  if(!S.db)return;
+  const q=query(collection(S.db,kind),where('calendarId','==',FIREBASE_CALENDAR_ID));
+  const existing=await getDocs(q);
+  const keep=new Set(items.map(x=>x.id));
+  let batch=writeBatch(S.db);
+  let ops=0;
+
+  for(const d of existing.docs){
+    if(!keep.has(d.id)){batch.delete(d.ref);ops++}
+  }
+  for(const item of items){
+    const payload={...item,calendarId:FIREBASE_CALENDAR_ID,cloudUpdatedAt:new Date().toISOString()};
+    batch.set(doc(S.db,kind,item.id),payload);
+    ops++;
+    if(ops>=400){await batch.commit();batch=writeBatch(S.db);ops=0}
+  }
+  if(ops>0)await batch.commit();
+}
+
+async function saveLessons(){
+  localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
+  if(S.db){
+    try{await syncArrayToCollection('lessons',S.lessons);S.firebaseReady=true}
+    catch(e){console.error(e);S.firebaseReady=false;toast('Сохранено локально, Firebase временно недоступен')}
+  }
+}
+async function saveStudents(){
+  localStorage.setItem(LS.students,JSON.stringify(S.students));
+  if(S.db){
+    try{await syncArrayToCollection('students',S.students);S.firebaseReady=true}
+    catch(e){console.error(e);S.firebaseReady=false;toast('Сохранено локально, Firebase временно недоступен')}
+  }
+}
+async function migrateLocalNow(){
+  if(!S.db)return toast('Firebase недоступен');
+  const l=localLessons(), st=localStudents();
+  if(!l.length&&!st.length)return toast('Локальных данных для переноса нет');
+  if(!confirm(`Перенести в Firebase локальные записи? Ученики: ${st.length}, уроки: ${l.length}.`))return;
+  try{
+    if(st.length){S.students=st;await syncArrayToCollection('students',st)}
+    if(l.length){S.lessons=l;await syncArrayToCollection('lessons',l)}
+    startRealtime();render();updateFirebaseStatus();toast('Локальные данные перенесены в Firebase');
+  }catch(e){console.error(e);toast('Не удалось перенести данные')}
+}
 function startClocks(){let zones=[['Екатеринбург',5],['Москва',3],['Вена',2],['Лондон',1]],zi=0;$('tzPrev').onclick=()=>{zi=(zi-1+zones.length)%zones.length;tick()};$('tzNext').onclick=()=>{zi=(zi+1)%zones.length;tick()};function t(off,sec){let d=new Date(Date.now()+off*3600000),hh=String(d.getUTCHours()).padStart(2,'0'),mm=String(d.getUTCMinutes()).padStart(2,'0'),ss=String(d.getUTCSeconds()).padStart(2,'0');return sec?`${hh}:${mm}:${ss}`:`${hh}:${mm}`}function tick(){$('zoneName').textContent=zones[zi][0];$('localClock').textContent=t(zones[zi][1],true);$('moscowClock').textContent=t(3,false)}tick();setInterval(tick,1000)}
 init();
 </script>
