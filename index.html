@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#f4effb">
-<title>Календарь учителя Ирины Александровны — v21 группы + персональные абонементы</title>
+<title>Календарь учителя Ирины Александровны — v27 группы + абонементы + разовая оплата</title>
 <style>
 :root{--bg:#f7f3fb;--card:rgba(255,255,255,.93);--line:#ddd2eb;--ink:#433553;--muted:#7b6d88;--accent:#8b6fd0;--accent2:#a98ae6;--green:#77b88c;--red:#d87383;--gold:#e6a845;--shadow:0 18px 50px rgba(78,56,104,.13)}
 *{box-sizing:border-box}html,body{margin:0;min-height:100%;font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink);background:#f6f1fb}
@@ -282,6 +282,8 @@ body::after{filter:saturate(1.12)}
 .group-package-actions .btn{padding:7px 10px;font-size:11px}
 .group-package-none{color:#8a7c96;font-size:13px}
 .group-payment-help{grid-column:1/-1;margin:-2px 0 4px;padding:9px 11px;border-radius:12px;background:#f4effd;color:#6b5b7c;font-size:12px}
+.group-onetime-paid{display:inline-flex;align-items:center;gap:5px;margin-top:5px;font-weight:800;color:#4f8b63}
+.group-onetime-btn.paid{background:#eaf7ee;border-color:#a9d5b6;color:#39764d}
 @media(max-width:700px){.group-package-actions{width:100%}.group-package-actions .btn{flex:1}}
 
 /* v26: обычные звёзды вместо букетиков */
@@ -858,7 +860,7 @@ function requestDateLabel(r){try{return new Intl.DateTimeFormat('ru-RU',{weekday
 function renderRequests(){const box=$('requestsList');if(!box)return;const rows=[...S.requests].sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));box.innerHTML=rows.length?rows.map(r=>`<div class="student-card" style="align-items:flex-start"><div style="min-width:0"><strong>${esc(r.childName||'Без имени')}</strong><p><b>${esc(requestDateLabel(r))}</b> · ${Number(r.duration||60)} мин</p><p>Родитель: ${esc(r.parentName||'—')} · ${esc(r.contact||'—')}</p>${r.childGrade?`<p>Возраст / класс: ${esc(r.childGrade)}</p>`:''}${r.comment?`<p>Комментарий: ${esc(r.comment)}</p>`:''}<p>Статус: <b>${r.status==='pending'?'Ожидает решения':r.status==='confirmed'?'Подтверждена':r.status==='rejected'?'Отклонена':esc(r.status||'')}</b></p></div><div class="package-actions">${r.status==='pending'?`<button class="btn primary" data-request-confirm="${r.id}">✓ Подтвердить</button><button class="btn" data-request-reject="${r.id}">Отклонить</button>`:''}</div></div>`).join(''):'<p style="color:var(--muted)">Заявок пока нет.</p>';box.querySelectorAll('[data-request-confirm]').forEach(b=>b.onclick=()=>confirmParentRequest(b.dataset.requestConfirm));box.querySelectorAll('[data-request-reject]').forEach(b=>b.onclick=()=>rejectParentRequest(b.dataset.requestReject))}
 async function confirmParentRequest(id){const r=S.requests.find(x=>x.id===id);if(!r||r.status!=='pending')return;let st=S.students.find(x=>(x.name||'').trim().toLowerCase()===(r.childName||'').trim().toLowerCase());if(!st){st={id:uid(),name:(r.childName||'').trim()||'Новый ученик',parent:(r.parentName||'').trim(),subject:'',contact:(r.contact||'').trim(),parentPhone:(r.contact||'').trim(),parentEmail:(r.parentEmail||'').trim().toLowerCase(),defaultDuration:Number(r.duration||60),defaultPrice:0,subscriptionTotal:0,subscriptionRemaining:0,currentTopic:'',progressTitle:'',progressPercent:0,homework:'',parentComment:(r.comment||'').trim(),achievementStars:0,notes:'Создано из заявки родителя'};S.students.push(st);await saveStudents()}const lessonId=uid();S.lessons.push({id:lessonId,studentId:st.id,studentName:st.name,date:r.date,time:r.time,duration:Number(r.duration||60),color:COLORS[1],price:Number(st.defaultPrice||0),paymentStatus:'unpaid',status:'planned',format:'online',meetingLink:st.defaultLink||'',lessonResult:'',homework:'',homeworkStatus:'notSent',attachments:[],stars:0,note:r.comment||'',seriesId:null,packageDebited:false,createdAt:new Date().toISOString(),updatedAt:new Date().toISOString()});await saveLessons();if(S.db)await setDoc(doc(S.db,'bookingRequests',id),{...r,status:'confirmed',confirmedAt:new Date().toISOString(),lessonId,calendarId:FIREBASE_CALENDAR_ID},{merge:true});toast('Заявка подтверждена — урок добавлен в календарь')}
 async function rejectParentRequest(id){const r=S.requests.find(x=>x.id===id);if(!r||r.status!=='pending')return;if(S.db)await setDoc(doc(S.db,'bookingRequests',id),{...r,status:'rejected',rejectedAt:new Date().toISOString(),calendarId:FIREBASE_CALENDAR_ID},{merge:true});toast('Заявка отклонена — время снова свободно')}
-function renderFinance(){const all=S.lessons.filter(x=>!x.hiddenGroupMember),total=all.reduce((s,x)=>s+(x.paymentStatus==='paid'?Number(x.price||0):0),0),due=all.reduce((s,x)=>s+(x.paymentStatus!=='paid'?Number(x.price||0):0),0),paid=all.filter(x=>x.paymentStatus==='paid').length;$('financeStats').innerHTML=`<div class="card stat"><small>Оплачено</small><strong>${fmtMoney(total)}</strong></div><div class="card stat"><small>Ожидается</small><strong>${fmtMoney(due)}</strong></div><div class="card stat"><small>Оплаченных уроков</small><strong>${paid}</strong></div><div class="card stat"><small>Всего уроков</small><strong>${all.length}</strong></div>`;let by={};all.forEach(l=>{if(!by[l.studentName])by[l.studentName]={paid:0,due:0,count:0};by[l.studentName].count++;if(l.paymentStatus==='paid')by[l.studentName].paid+=Number(l.price||0);else by[l.studentName].due+=Number(l.price||0)});$('financeList').innerHTML=Object.entries(by).map(([n,v])=>`<div class="student-card"><div><strong>${esc(n)}</strong><p>${v.count} урок(а)</p></div><div style="text-align:right"><strong>${fmtMoney(v.paid)}</strong><p>ожидается ${fmtMoney(v.due)}</p></div></div>`).join('')||'<p style="color:var(--muted)">Нет финансовых данных.</p>'}
+function renderFinance(){const all=S.lessons.filter(x=>(!x.hiddenGroupMember&&!x.groupId)||(x.hiddenGroupMember&&x.paymentStatus!=='package')),total=all.reduce((s,x)=>s+(x.paymentStatus==='paid'?Number(x.price||0):0),0),due=all.reduce((s,x)=>s+(x.paymentStatus!=='paid'?Number(x.price||0):0),0),paid=all.filter(x=>x.paymentStatus==='paid').length;$('financeStats').innerHTML=`<div class="card stat"><small>Оплачено</small><strong>${fmtMoney(total)}</strong></div><div class="card stat"><small>Ожидается</small><strong>${fmtMoney(due)}</strong></div><div class="card stat"><small>Оплаченных уроков</small><strong>${paid}</strong></div><div class="card stat"><small>Всего уроков</small><strong>${all.length}</strong></div>`;let by={};all.forEach(l=>{if(!by[l.studentName])by[l.studentName]={paid:0,due:0,count:0};by[l.studentName].count++;if(l.paymentStatus==='paid')by[l.studentName].paid+=Number(l.price||0);else by[l.studentName].due+=Number(l.price||0)});$('financeList').innerHTML=Object.entries(by).map(([n,v])=>`<div class="student-card"><div><strong>${esc(n)}</strong><p>${v.count} урок(а)</p></div><div style="text-align:right"><strong>${fmtMoney(v.paid)}</strong><p>ожидается ${fmtMoney(v.due)}</p></div></div>`).join('')||'<p style="color:var(--muted)">Нет финансовых данных.</p>'}
 
 function lessonChoiceOptions(query=''){
   const q=String(query||'').trim().toLowerCase().replace(/ё/g,'е');
@@ -928,12 +930,29 @@ function groupResultDefaults(studentId,existing={},fallbackStatus='planned'){
     else status=validStatuses.has(fallbackStatus)?fallbackStatus:'planned';
   }
   const attendance=status==='missed'?'absent':'present';
-  return {studentId,studentName:st.name||existing.studentName||'Ученик',status,attendance,stars:Math.max(0,Math.min(5,Number(existing.stars||0))),homeworkStatus:existing.homeworkStatus||'',comment:existing.comment||''};
+  return {
+    studentId,studentName:st.name||existing.studentName||'Ученик',status,attendance,
+    stars:Math.max(0,Math.min(5,Number(existing.stars||0))),
+    homeworkStatus:existing.homeworkStatus||'',comment:existing.comment||'',
+    oneTimePaid:Boolean(existing.oneTimePaid),
+    oneTimeAmount:Math.max(0,Number(existing.oneTimeAmount||0))
+  };
 }
-function groupPackageMarkup(studentId){
+function groupPackageMarkup(studentId,result={}){
   const info=subscriptionInfo(studentId);
   if(!info){
-    return `<div class="group-package-top"><div class="group-package-info"><strong>Абонемента пока нет</strong><small>Оплата этого ребёнка ведётся отдельно от остальных участников группы.</small></div><div class="group-package-actions"><button type="button" class="btn primary" data-group-package-new="${studentId}">＋ Новый абонемент</button></div></div>`;
+    const paid=Boolean(result.oneTimePaid),amount=Math.max(0,Number(result.oneTimeAmount||0));
+    return `<div class="group-package-top">
+      <div class="group-package-info">
+        <strong>Абонемента пока нет</strong>
+        <small>Можно оплачивать каждое занятие отдельно или в любой момент оформить абонемент.</small>
+        ${paid?`<span class="group-onetime-paid">✓ Разовая оплата${amount?' · '+fmtMoney(amount):''}</span>`:''}
+      </div>
+      <div class="group-package-actions">
+        <button type="button" class="btn group-onetime-btn ${paid?'paid':''}" data-group-onetime="${studentId}" data-paid="${paid?'1':'0'}" data-amount="${amount}">${paid?'✓ Оплачено':'₽ Оплатить урок'}</button>
+        <button type="button" class="btn primary" data-group-package-new="${studentId}">＋ Новый абонемент</button>
+      </div>
+    </div>`;
   }
   const d=info.paidAt?new Intl.DateTimeFormat('ru-RU',{day:'numeric',month:'long',year:'numeric'}).format(new Date(info.paidAt+'T00:00:00')):'';
   return `<div class="group-package-top"><div class="group-package-info"><strong>Осталось: ${info.remaining} из ${info.total} занятий</strong><small>Списано проведённых уроков: ${info.used}${d?' · Абонемент с '+d:' · Дата оплаты не указана'}${Number(info.payment?.packageAmount||0)?' · '+fmtMoney(Number(info.payment.packageAmount||0)):''}</small></div><div class="group-package-actions"><button type="button" class="btn" data-group-package-edit="${studentId}">✎ Оплата</button><button type="button" class="btn primary" data-group-package-new="${studentId}">＋ Новый абонемент</button></div></div><div class="group-package-track"><span style="width:${info.pct}%"></span></div>`;
@@ -942,9 +961,30 @@ function bindGroupPackageButtons(root){
   if(!root)return;
   root.querySelectorAll('[data-group-package-new]').forEach(b=>b.onclick=()=>openPackagePayment(null,b.dataset.groupPackageNew,$('lessonDate')?.value||iso(new Date())));
   root.querySelectorAll('[data-group-package-edit]').forEach(b=>b.onclick=()=>{const p=latestPackagePayment(b.dataset.groupPackageEdit);if(p)openPackagePayment(p,b.dataset.groupPackageEdit,$('lessonDate')?.value||iso(new Date()));else openPackagePayment(null,b.dataset.groupPackageEdit,$('lessonDate')?.value||iso(new Date()))});
+  root.querySelectorAll('[data-group-onetime]').forEach(b=>b.onclick=()=>{
+    const sid=b.dataset.groupOnetime;
+    const panel=b.closest('[data-group-package]');
+    const already=b.dataset.paid==='1';
+    if(already){
+      if(!confirm('Снять отметку о разовой оплате этого занятия?'))return;
+      panel.dataset.onetimePaid='0';panel.dataset.onetimeAmount='0';
+      const card=b.closest('[data-member-card]'),r=groupResultDefaults(sid,{oneTimePaid:false,oneTimeAmount:0},card?.querySelector(`[data-member-status="${sid}"]`)?.value||'planned');
+      panel.innerHTML=groupPackageMarkup(sid,r);bindGroupPackageButtons(panel);return;
+    }
+    const st=S.students.find(x=>x.id===sid)||{};
+    const suggested=Math.max(0,Number(st.defaultPrice||0));
+    const raw=prompt('Сумма разовой оплаты за это занятие, ₽',suggested?String(suggested):'');
+    if(raw===null)return;
+    const amount=Math.max(0,Number(String(raw).replace(',','.'))||0);
+    panel.dataset.onetimePaid='1';panel.dataset.onetimeAmount=String(amount);
+    const card=b.closest('[data-member-card]'),r=groupResultDefaults(sid,{oneTimePaid:true,oneTimeAmount:amount},card?.querySelector(`[data-member-status="${sid}"]`)?.value||'planned');
+    panel.innerHTML=groupPackageMarkup(sid,r);panel.dataset.onetimePaid='1';panel.dataset.onetimeAmount=String(amount);bindGroupPackageButtons(panel);
+  });
 }
 function updateGroupPackageCard(studentId){
-  const el=document.querySelector(`[data-group-package="${studentId}"]`);if(!el)return;el.innerHTML=groupPackageMarkup(studentId);bindGroupPackageButtons(el);
+  const el=document.querySelector(`[data-group-package="${studentId}"]`);if(!el)return;
+  const r={oneTimePaid:el.dataset.onetimePaid==='1',oneTimeAmount:Number(el.dataset.onetimeAmount||0)};
+  el.innerHTML=groupPackageMarkup(studentId,r);el.dataset.onetimePaid=r.oneTimePaid?'1':'0';el.dataset.onetimeAmount=String(r.oneTimeAmount||0);bindGroupPackageButtons(el);
 }
 function renderGroupParticipantEditor(existingResults=null){
   const panel=$('groupResultsPanel'),list=$('groupResultsList'),group=currentSelectedGroup();
@@ -964,7 +1004,7 @@ function renderGroupParticipantEditor(existingResults=null){
     return `<div class="group-result-card ${abs?'absent':''}" data-member-card="${sid}">
       <h4>${esc(r.studentName)}</h4>
       <div class="group-result-grid">
-        <div class="group-package-panel" data-group-package="${sid}">${groupPackageMarkup(sid)}</div>
+        <div class="group-package-panel" data-group-package="${sid}" data-onetime-paid="${r.oneTimePaid?'1':'0'}" data-onetime-amount="${r.oneTimeAmount||0}">${groupPackageMarkup(sid,r)}</div>
         <div class="field"><label>Статус занятия</label><select data-member-status="${sid}">
           <option value="planned" ${r.status==='planned'?'selected':''}>Запланирован</option>
           <option value="completed" ${r.status==='completed'?'selected':''}>Проведён</option>
@@ -992,7 +1032,8 @@ function readGroupParticipantResults(){
   for(const sid of group.memberIds||[]){
     const st=S.students.find(x=>x.id===sid)||{};
     const status=list.querySelector(`[data-member-status="${sid}"]`)?.value||'planned';
-    out[sid]={studentId:sid,studentName:st.name||'Ученик',status,attendance:status==='missed'?'absent':'present',stars:Number(list.querySelector(`[data-member-stars="${sid}"]`)?.dataset.value||0),homeworkStatus:list.querySelector(`[data-member-homework="${sid}"]`)?.value||'',comment:(list.querySelector(`[data-member-comment="${sid}"]`)?.value||'').trim()};
+    const payPanel=list.querySelector(`[data-group-package="${sid}"]`);
+    out[sid]={studentId:sid,studentName:st.name||'Ученик',status,attendance:status==='missed'?'absent':'present',stars:Number(list.querySelector(`[data-member-stars="${sid}"]`)?.dataset.value||0),homeworkStatus:list.querySelector(`[data-member-homework="${sid}"]`)?.value||'',comment:(list.querySelector(`[data-member-comment="${sid}"]`)?.value||'').trim(),oneTimePaid:payPanel?.dataset.onetimePaid==='1',oneTimeAmount:Math.max(0,Number(payPanel?.dataset.onetimeAmount||0))};
   }
   return out;
 }
@@ -1007,8 +1048,10 @@ function rebuildGroupMemberShadows(){
       const st=S.students.find(x=>x.id===sid);if(!st)continue;
       const r=groupResultDefaults(sid,base.participantResults?.[sid]||{},base.status||'planned');
       const old=existing.get(`${base.id}::${sid}`)||{};
-      const pay=packagePaymentForDate(sid,base.date)?'package':(old.paymentStatus==='paid'?'paid':'unpaid');
-      shadows.push({...old,id:`${base.id}__member__${sid}`,hiddenGroupMember:true,groupLessonId:base.id,groupId:base.groupId,groupName:base.studentName,studentId:sid,studentName:st.name,date:base.date,time:base.time,duration:base.duration,color:base.color,price:Number(st.defaultPrice||0),paymentStatus:pay,status:r.status,format:base.format,meetingLink:base.meetingLink,lessonResult:base.lessonResult,homework:base.homework,homeworkStatus:r.homeworkStatus||base.homeworkStatus||'',attachments:[...(base.attachments||[])],stars:Number(r.stars||0),note:r.comment||'',attendance:r.attendance,seriesId:base.seriesId?`${base.seriesId}__${sid}`:null,packageDebited:false,updatedAt:base.updatedAt||new Date().toISOString(),createdAt:old.createdAt||base.createdAt||new Date().toISOString()});
+      const hasPackage=Boolean(packagePaymentForDate(sid,base.date));
+      const pay=hasPackage?'package':(r.oneTimePaid?'paid':'unpaid');
+      const memberPrice=hasPackage?0:Math.max(0,Number(r.oneTimeAmount||st.defaultPrice||0));
+      shadows.push({...old,id:`${base.id}__member__${sid}`,hiddenGroupMember:true,groupLessonId:base.id,groupId:base.groupId,groupName:base.studentName,studentId:sid,studentName:st.name,date:base.date,time:base.time,duration:base.duration,color:base.color,price:memberPrice,paymentStatus:pay,oneTimePaid:Boolean(r.oneTimePaid),oneTimeAmount:Math.max(0,Number(r.oneTimeAmount||0)),status:r.status,format:base.format,meetingLink:base.meetingLink,lessonResult:base.lessonResult,homework:base.homework,homeworkStatus:r.homeworkStatus||base.homeworkStatus||'',attachments:[...(base.attachments||[])],stars:Number(r.stars||0),note:r.comment||'',attendance:r.attendance,seriesId:base.seriesId?`${base.seriesId}__${sid}`:null,packageDebited:false,updatedAt:base.updatedAt||new Date().toISOString(),createdAt:old.createdAt||base.createdAt||new Date().toISOString()});
     }
   }
   S.lessons=[...bases,...shadows];
