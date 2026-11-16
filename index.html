@@ -613,12 +613,12 @@ body::after{filter:saturate(1.12)}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js';
 import {
   getFirestore, collection, doc, setDoc, deleteDoc, getDocs,
-  query, where, onSnapshot, writeBatch
+  query, where, onSnapshot, writeBatch, runTransaction
 } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'https://www.gstatic.com/firebasejs/10.14.1/firebase-storage.js';
 const COLORS=['#e2a24a','#72b1ad','#9277c3','#cf7872','#7599ca','#87a86e','#c17fa6','#ae956a'];
 const STATUS={planned:'Запланирован',confirmed:'Подтверждён',completed:'Проведён',cancelledStudent:'Отменён учеником',cancelledTeacher:'Отменён преподавателем',missed:'Пропущен'};
-const LS={lessons:'ltc_lessons_v2',students:'ltc_students_v2',groups:'ltc_groups_v1'};
+const LS={lessons:'ltc_lessons_v2',students:'ltc_students_v2',groups:'ltc_groups_v1',pendingWrites:'ltc_pending_writes_v1'};
 const FIREBASE_CALENDAR_ID='irina-main';
 const firebaseConfig={
   apiKey:"AIzaSyAEXj7Ks9jWQYhghEVxhfkDIZECcjYWpCI",
@@ -632,7 +632,8 @@ const firebaseConfig={
 const S={
   date:new Date(),view:'month',section:'calendar',lessons:[],students:[],groups:[],requests:[],
   editId:null,stars:0,color:COLORS[1],db:null,storage:null,
-  unsubStudents:null,unsubLessons:null,unsubGroups:null,unsubRequests:null,firebaseReady:false
+  unsubStudents:null,unsubLessons:null,unsubGroups:null,unsubRequests:null,firebaseReady:false,
+  pendingWrites:[],pendingFlush:false
 };
 const $=id=>document.getElementById(id), esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function iso(d){return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')}
@@ -644,7 +645,10 @@ async function init(){
   renderColors();
   renderStars();
   await setupStore();
+  S.pendingWrites=readPendingWrites();
   await loadAll();
+  void flushPendingWrites();
+  setInterval(()=>{if(S.pendingWrites.length)void flushPendingWrites()},30000);
 
   let changed=false;
   for(const st of S.students){
@@ -674,6 +678,7 @@ function bind(){
  $('addLesson').onclick=()=>openLesson();$('replenishPackageFromLesson').onclick=()=>openPackagePayment(null,$('studentId').value,$('lessonDate').value);$('editPackageFromLesson').onclick=()=>{const p=latestPackagePayment($('studentId').value);if(p)openPackagePayment(p)};$('resetPackageFromLesson').onclick=()=>{const sid=$('studentId').value;if(sid)resetStudentPackage(sid)};$('studentPackageTopUp').onclick=()=>{const sid=$('editingStudentId').value;if(!sid)return toast('Сначала сохраните карточку ученика');openPackagePayment(null,sid,iso(new Date()))};$('studentPackageReset').onclick=()=>{const sid=$('editingStudentId').value;if(sid)resetStudentPackage(sid)};$('addPackagePayment').onclick=()=>openPackagePayment();$('packageForm').onsubmit=savePackagePayment;$('deletePackagePayment').onclick=deletePackagePayment;document.querySelectorAll('[data-close-package]').forEach(b=>b.onclick=closePackagePayment);$('addLessonToday').onclick=()=>openLesson({date:iso(new Date()),time:'10:00'});$('addStudent').onclick=()=>openStudent();$('addGroup').onclick=()=>openGroup();
  $('search').oninput=renderCalendar;$('studentFilter').onchange=renderCalendar;$('statusFilter').onchange=renderCalendar;$('unpaidOnly').onchange=renderCalendar;if($('studentListSearch'))$('studentListSearch').oninput=renderStudents;
  $('lessonForm').onsubmit=saveLesson;$('studentForm').onsubmit=saveStudent;$('groupForm').onsubmit=saveGroup;
+ window.addEventListener('online',()=>{void flushPendingWrites()});
  $('progressRange').oninput=e=>syncStudentProgress(e.target.value);$('progressPercent').oninput=e=>syncStudentProgress(e.target.value);
  $('recurrence').onchange=()=>$('recurrenceEndWrap').classList.toggle('hidden',$('recurrence').value==='none');
  document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>close('lessonModal'));document.querySelectorAll('[data-close-student]').forEach(b=>b.onclick=()=>close('studentModal'));document.querySelectorAll('[data-close-group]').forEach(b=>b.onclick=()=>close('groupModal'));document.querySelectorAll('[data-close-sync]').forEach(b=>b.onclick=()=>close('syncModal'));
@@ -938,8 +943,10 @@ function groupResultDefaults(studentId,existing={},fallbackStatus='planned'){
     oneTimeAmount:Math.max(0,Number(existing.oneTimeAmount||0))
   };
 }
-function groupPackageMarkup(studentId,result={}){
-  const info=subscriptionInfo(studentId);
+function groupPackageMarkup(studentId,lessonDate,result={},groupLessonId=''){
+  const savedLesson=groupLessonId?S.lessons.find(x=>x.id===groupLessonId):null;
+  const effectiveLessonDate=savedLesson?.date||lessonDate;
+  const info=packageInfoForDate(studentId,effectiveLessonDate);
   if(!info){
     const paid=Boolean(result.oneTimePaid),amount=Math.max(0,Number(result.oneTimeAmount||0));
     return `<div class="group-package-top">
@@ -959,17 +966,18 @@ function groupPackageMarkup(studentId,result={}){
 }
 function bindGroupPackageButtons(root){
   if(!root)return;
-  root.querySelectorAll('[data-group-package-new]').forEach(b=>b.onclick=()=>openPackagePayment(null,b.dataset.groupPackageNew,$('lessonDate')?.value||iso(new Date())));
-  root.querySelectorAll('[data-group-package-edit]').forEach(b=>b.onclick=()=>{const p=latestPackagePayment(b.dataset.groupPackageEdit);if(p)openPackagePayment(p,b.dataset.groupPackageEdit,$('lessonDate')?.value||iso(new Date()));else openPackagePayment(null,b.dataset.groupPackageEdit,$('lessonDate')?.value||iso(new Date()))});
+  root.querySelectorAll('[data-group-package-new]').forEach(b=>b.onclick=()=>{const panel=b.closest('[data-group-package]'),saved=S.lessons.find(x=>x.id===panel?.dataset.lessonId),date=saved?.date||panel?.dataset.lessonDate||'';openPackagePayment(null,b.dataset.groupPackageNew,date)});
+  root.querySelectorAll('[data-group-package-edit]').forEach(b=>b.onclick=()=>{const panel=b.closest('[data-group-package]'),saved=S.lessons.find(x=>x.id===panel?.dataset.lessonId),date=saved?.date||panel?.dataset.lessonDate||'',p=packagePaymentForDate(b.dataset.groupPackageEdit,date);if(p)openPackagePayment(p,b.dataset.groupPackageEdit,date);else openPackagePayment(null,b.dataset.groupPackageEdit,date)});
   root.querySelectorAll('[data-group-onetime]').forEach(b=>b.onclick=()=>{
     const sid=b.dataset.groupOnetime;
     const panel=b.closest('[data-group-package]');
+    const saved=S.lessons.find(x=>x.id===panel?.dataset.lessonId),lessonDate=saved?.date||panel?.dataset.lessonDate||'';
     const already=b.dataset.paid==='1';
     if(already){
       if(!confirm('Снять отметку о разовой оплате этого занятия?'))return;
       panel.dataset.onetimePaid='0';panel.dataset.onetimeAmount='0';
       const card=b.closest('[data-member-card]'),r=groupResultDefaults(sid,{oneTimePaid:false,oneTimeAmount:0},card?.querySelector(`[data-member-status="${sid}"]`)?.value||'planned');
-      panel.innerHTML=groupPackageMarkup(sid,r);bindGroupPackageButtons(panel);return;
+      panel.innerHTML=groupPackageMarkup(sid,lessonDate,r,panel.dataset.lessonId);bindGroupPackageButtons(panel);return;
     }
     const st=S.students.find(x=>x.id===sid)||{};
     const suggested=Math.max(0,Number(st.defaultPrice||0));
@@ -978,15 +986,25 @@ function bindGroupPackageButtons(root){
     const amount=Math.max(0,Number(String(raw).replace(',','.'))||0);
     panel.dataset.onetimePaid='1';panel.dataset.onetimeAmount=String(amount);
     const card=b.closest('[data-member-card]'),r=groupResultDefaults(sid,{oneTimePaid:true,oneTimeAmount:amount},card?.querySelector(`[data-member-status="${sid}"]`)?.value||'planned');
-    panel.innerHTML=groupPackageMarkup(sid,r);panel.dataset.onetimePaid='1';panel.dataset.onetimeAmount=String(amount);bindGroupPackageButtons(panel);
+    panel.innerHTML=groupPackageMarkup(sid,lessonDate,r,panel.dataset.lessonId);panel.dataset.onetimePaid='1';panel.dataset.onetimeAmount=String(amount);bindGroupPackageButtons(panel);
   });
 }
-function updateGroupPackageCard(studentId){
-  const el=document.querySelector(`[data-group-package="${studentId}"]`);if(!el)return;
-  const r={oneTimePaid:el.dataset.onetimePaid==='1',oneTimeAmount:Number(el.dataset.onetimeAmount||0)};
-  el.innerHTML=groupPackageMarkup(studentId,r);el.dataset.onetimePaid=r.oneTimePaid?'1':'0';el.dataset.onetimeAmount=String(r.oneTimeAmount||0);bindGroupPackageButtons(el);
+function updateGroupPackageCard(studentId,lessonId,lessonDate=''){
+  if(lessonId==null)return;
+  const selector=`[data-group-package="${studentId}"]`;
+  document.querySelectorAll(selector).forEach(el=>{
+    if((el.dataset.lessonId||'')!==lessonId)return;
+    const saved=S.lessons.find(x=>x.id===lessonId);
+    const date=saved?.date||lessonDate||el.dataset.lessonDate||'';
+    const r={oneTimePaid:el.dataset.onetimePaid==='1',oneTimeAmount:Number(el.dataset.onetimeAmount||0)};
+    el.dataset.lessonDate=date;
+    el.innerHTML=groupPackageMarkup(studentId,date,r,lessonId);
+    el.dataset.onetimePaid=r.oneTimePaid?'1':'0';
+    el.dataset.onetimeAmount=String(r.oneTimeAmount||0);
+    bindGroupPackageButtons(el);
+  });
 }
-function renderGroupParticipantEditor(existingResults=null){
+function renderGroupParticipantEditor(existingResults=null,lessonDate=$('lessonDate')?.value||''){
   const panel=$('groupResultsPanel'),list=$('groupResultsList'),group=currentSelectedGroup();
   if(!panel||!list)return;
   const isGroup=Boolean(group);
@@ -998,13 +1016,14 @@ function renderGroupParticipantEditor(existingResults=null){
   if(isGroup&&$('lessonPackageInfo'))$('lessonPackageInfo').style.display='none';
   if(!isGroup){list.innerHTML='';return}
   const currentLesson=S.editId?S.lessons.find(x=>x.id===S.editId):null;
+  lessonDate=currentLesson?.date||lessonDate;
   const stored=existingResults||currentLesson?.participantResults||{};
   list.innerHTML=`<div class="group-payment-help">💳 Абонемент у каждого участника свой. Занятие списывается только у того ребёнка, у которого здесь выбран статус «Проведён».</div>`+(group.memberIds||[]).map(sid=>{
     const r=groupResultDefaults(sid,stored[sid]||{},currentLesson?.status||'planned'),abs=r.status==='missed';
     return `<div class="group-result-card ${abs?'absent':''}" data-member-card="${sid}">
       <h4>${esc(r.studentName)}</h4>
       <div class="group-result-grid">
-        <div class="group-package-panel" data-group-package="${sid}" data-onetime-paid="${r.oneTimePaid?'1':'0'}" data-onetime-amount="${r.oneTimeAmount||0}">${groupPackageMarkup(sid,r)}</div>
+        <div class="group-package-panel" data-group-package="${sid}" data-lesson-id="${currentLesson?.id||''}" data-lesson-date="${lessonDate}" data-onetime-paid="${r.oneTimePaid?'1':'0'}" data-onetime-amount="${r.oneTimeAmount||0}">${groupPackageMarkup(sid,lessonDate,r,currentLesson?.id||'')}</div>
         <div class="field"><label>Статус занятия</label><select data-member-status="${sid}">
           <option value="planned" ${r.status==='planned'?'selected':''}>Запланирован</option>
           <option value="completed" ${r.status==='completed'?'selected':''}>Проведён</option>
@@ -1063,12 +1082,26 @@ function renderLessonAttachments(items=[]){
   root.innerHTML=(items||[]).length?(items||[]).map(a=>`<a href="${esc(a.url||'#')}" target="_blank" rel="noopener">📎 ${esc(a.name||'Файл')} · ${esc(a.uploadedBy==='parent'?'родитель':'преподаватель')}</a>`).join(''):'<small style="color:var(--muted)">Файлов пока нет.</small>';
 }
 
+function packageDateKey(value){
+  if(value instanceof Date&&!Number.isNaN(value.getTime()))return `${value.getFullYear()}-${String(value.getMonth()+1).padStart(2,'0')}-${String(value.getDate()).padStart(2,'0')}`;
+  const raw=String(value??'').trim();
+  let m=raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m)m=[null,m[1],m[2],m[3]];
+  else{
+    const localized=raw.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})$/);
+    if(localized)m=[null,localized[3],localized[2],localized[1]];
+  }
+  if(!m)return '';
+  const y=Number(m[1]),month=Number(m[2]),day=Number(m[3]);
+  if(month<1||month>12||day<1||day>new Date(y,month,0).getDate())return '';
+  return `${String(y).padStart(4,'0')}-${String(month).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+}
 function packagePaymentsFor(studentId){
   return S.lessons
     .filter(x=>x.eventType==='packagePayment'&&x.studentId===studentId)
     .sort((a,b)=>{
-      const da=String(a.date||'')+'|'+String(a.createdAt||a.updatedAt||'');
-      const db=String(b.date||'')+'|'+String(b.createdAt||b.updatedAt||'');
+      const da=packageDateKey(a.date)+'|'+String(a.createdAt||a.updatedAt||'');
+      const db=packageDateKey(b.date)+'|'+String(b.createdAt||b.updatedAt||'');
       return da.localeCompare(db);
     });
 }
@@ -1077,7 +1110,12 @@ function latestPackagePayment(studentId){
   return arr.length?arr[arr.length-1]:null;
 }
 function packagePaymentForDate(studentId,date){
-  const arr=packagePaymentsFor(studentId).filter(p=>String(p.date||'')<=String(date||''));
+  const lessonDay=packageDateKey(date);
+  if(!lessonDay)return null;
+  const arr=packagePaymentsFor(studentId).filter(p=>{
+    const paymentDay=packageDateKey(p.date);
+    return paymentDay&&paymentDay<=lessonDay;
+  });
   return arr.length?arr[arr.length-1]:null;
 }
 function nextPackagePaymentAfter(payment){
@@ -1089,14 +1127,11 @@ function nextPackagePaymentAfter(payment){
 function packageUsageForPayment(payment,throughDate=null){
   if(!payment)return 0;
   const next=nextPackagePaymentAfter(payment);
-  const today=iso(new Date());
-  const upper=throughDate&&String(throughDate)<today?String(throughDate):today;
+  const upper=packageDateKey(throughDate)||packageDateKey(new Date());
+  const purchaseDay=packageDateKey(payment.date);
+  const nextDay=packageDateKey(next?.date);
 
-  // Считаем ТОЛЬКО реально проведённые уроки:
-  // 1) не раньше даты покупки абонемента;
-  // 2) не позже сегодняшнего дня (будущие ошибочно помеченные "Проведён" не списывают пакет);
-  // 3) до следующего купленного абонемента;
-  // 4) один логический урок = одно списание.
+  // Считаем проведённые уроки в пределах срока действия этой покупки.
   const seen=new Set();
   let used=0;
 
@@ -1105,10 +1140,10 @@ function packageUsageForPayment(payment,throughDate=null){
     if(l.studentId!==payment.studentId)continue;
     if(l.paymentStatus!=='package'||l.status!=='completed')continue;
 
-    const d=String(l.date||'');
-    if(d<String(payment.date||''))continue;
+    const d=packageDateKey(l.date);
+    if(!d||d<purchaseDay)continue;
     if(d>upper)continue;
-    if(next&&d>=String(next.date||''))continue;
+    if(nextDay&&d>=nextDay)continue;
 
     const logicalId=l.hiddenGroupMember
       ? `group:${l.groupLessonId||l.id}:${l.studentId}`
@@ -1121,6 +1156,7 @@ function packageUsageForPayment(payment,throughDate=null){
   return used;
 }
 function packageInfoForDate(studentId,date){
+  if(!date)return null;
   const payment=packagePaymentForDate(studentId,date);
   if(!payment)return null;
   const total=Math.max(0,Number(payment.packageCount||0));
@@ -1160,7 +1196,12 @@ function recomputeSubscription(studentId){
 function updateLessonPackageInfo(){
   const raw=$('studentId').value;
   const sid=raw.startsWith('group:')?'':raw;
-  const info=sid?subscriptionInfo(sid):null;
+  const lessonDate=$('lessonDate');
+  lessonDate.onchange=()=>{
+    updateLessonPackageInfo();
+    renderGroupParticipantEditor(readGroupParticipantResults(),lessonDate.value);
+  };
+  const info=sid?packageInfoForDate(sid,lessonDate.value):null;
   const show=Boolean(sid)&&($('paymentStatus').value==='package'||Boolean(info));
   $('lessonPackageInfo').style.display=show?'block':'none';
 
@@ -1241,7 +1282,7 @@ async function savePackagePayment(e){
   closePackagePayment();
   render();
   updateLessonPackageInfo();
-  updateGroupPackageCard(st.id);
+  updateGroupPackageCard(st.id,S.editId||'');
 
   toast(info?`Абонемент: осталось ${info.remaining} из ${info.total}`:'Оплата сохранена');
 }
@@ -1265,7 +1306,7 @@ async function resetStudentPackage(studentId){
   render();
   updateLessonPackageInfo();
   updateStudentPackageSummary();
-  updateGroupPackageCard(studentId);
+  updateGroupPackageCard(studentId,S.editId||'');
   toast('Абонемент полностью обнулён');
 }
 
@@ -1284,7 +1325,7 @@ async function deletePackagePayment(){
   closePackagePayment();
   render();
   updateLessonPackageInfo();
-  updateGroupPackageCard(item.studentId);
+  updateGroupPackageCard(item.studentId,S.editId||'');
   toast(info?`Оплата удалена · текущий остаток ${info.remaining} из ${info.total}`:'Оплата удалена · активного абонемента нет');
 }
 
@@ -1363,9 +1404,10 @@ async function saveLesson(e){
   const affectedIds=new Set();
   if(base.studentId)affectedIds.add(base.studentId);
   if(base.groupId)(base.groupMemberIds||[]).forEach(id=>affectedIds.add(id));
-  await saveLessons();
+  const lessonSave=await saveLessons();
   for(const sid of affectedIds){recomputeSubscription(sid)}
-  if(affectedIds.size)await saveStudents();
+  let studentSave={localSaved:true,synced:true};
+  if(affectedIds.size)studentSave=await saveStudents();
   // Обновляем краткую карточку только для тех детей, у кого урок действительно проведён.
   let studentSummaryChanged=false;
   if(base.studentId&&base.status==='completed'){
@@ -1380,8 +1422,11 @@ async function saveLesson(e){
       if(i>=0){S.students[i]={...S.students[i],latestLessonResult:base.lessonResult||'',latestHomework:base.homework||'',latestLessonStars:Number(r.stars||0),latestLessonDate:base.date||'',latestLessonId:`${base.id}__member__${sid}`,latestTeacherComment:r.comment||'',latestLessonUpdatedAt:new Date().toISOString()};studentSummaryChanged=true}
     }
   }
-  if(studentSummaryChanged)await saveStudents();
-  close('lessonModal');render();toast(base.groupId?'Групповой урок сохранён для всех участников':'Сохранено и синхронизировано');
+  if(studentSummaryChanged)studentSave=await saveStudents();
+  close('lessonModal');render();
+  if(lessonSave?.localSaved===false||studentSave?.localSaved===false)toast('Не удалось сохранить все изменения в этом браузере');
+  else if(lessonSave?.synced===false||studentSave?.synced===false)toast('Урок сохранён локально, синхронизация с Firebase ожидает подключения');
+  else toast(base.groupId?'Групповой урок сохранён для всех участников':'Сохранено и синхронизировано');
 }
 async function deleteLesson(){
   if(!S.editId||!confirm('Удалить урок?'))return;
@@ -1449,6 +1494,98 @@ async function setupStore(){
 }
 function localLessons(){try{return JSON.parse(localStorage.getItem(LS.lessons)||'[]')}catch{return []}}
 function localStudents(){try{return JSON.parse(localStorage.getItem(LS.students)||'[]')}catch{return []}}
+function readPendingWrites(){
+  try{
+    const records=JSON.parse(localStorage.getItem(LS.pendingWrites)||'[]');
+    return Array.isArray(records)?records.filter(x=>x&&['lessons','students'].includes(x.kind)&&x.id&&x.data&&typeof x.data==='object'):[];
+  }catch(e){
+    console.error('Pending Firestore writes load error',e);
+    toast('Не удалось загрузить очередь синхронизации');
+    return [];
+  }
+}
+function persistPendingWrites(){
+  try{
+    localStorage.setItem(LS.pendingWrites,JSON.stringify(S.pendingWrites));
+    return true;
+  }catch(e){
+    console.error('Pending Firestore writes save error',e);
+    return false;
+  }
+}
+function queuePendingDocuments(kind,items){
+  for(const item of items){
+    const record={kind,id:item.id,data:{...item,calendarId:FIREBASE_CALENDAR_ID,cloudUpdatedAt:new Date().toISOString()}};
+    const index=S.pendingWrites.findIndex(x=>x.kind===kind&&x.id===item.id);
+    if(index>=0)S.pendingWrites[index]=record;
+    else S.pendingWrites.push(record);
+  }
+  return persistPendingWrites();
+}
+function queuePendingDeletes(kind,ids){
+  for(const id of ids){
+    const record={kind,id,operation:'delete',data:{id,calendarId:FIREBASE_CALENDAR_ID}};
+    const index=S.pendingWrites.findIndex(x=>x.kind===kind&&x.id===id);
+    if(index>=0)S.pendingWrites[index]=record;
+    else S.pendingWrites.push(record);
+  }
+  return persistPendingWrites();
+}
+function mergePendingRecords(kind,items){
+  const records=new Map((items||[]).map(item=>[item.id,item]));
+  for(const pending of S.pendingWrites){
+    if(pending.kind!==kind)continue;
+    if(pending.operation==='delete')records.delete(pending.id);
+    else records.set(pending.id,{...pending.data,id:pending.id});
+  }
+  return [...records.values()];
+}
+async function flushPendingWrites(){
+  if(!S.db||S.pendingFlush)return false;
+  if(!S.pendingWrites.length)return true;
+  S.pendingFlush=true;
+  let synced=true;
+  try{
+    while(S.pendingWrites.length){
+      const pending=S.pendingWrites[0];
+      try{
+        if(pending.operation==='delete')await deleteDoc(doc(S.db,pending.kind,pending.id));
+        else await setDoc(doc(S.db,pending.kind,pending.id),pending.data,{merge:true});
+        const index=S.pendingWrites.indexOf(pending);
+        if(index>=0){
+          S.pendingWrites.splice(index,1);
+          if(!persistPendingWrites()){
+            S.pendingWrites.splice(index,0,pending);
+            synced=false;
+            break;
+          }
+        }
+      }catch(e){
+        console.error(`Firestore ${pending.kind}/${pending.id} save error`,e);
+        S.firebaseReady=false;
+        synced=false;
+        break;
+      }
+    }
+    if(synced)S.firebaseReady=true;
+    updateFirebaseStatus();
+    return synced;
+  }finally{
+    S.pendingFlush=false;
+  }
+}
+async function saveDocuments(kind,items,deletedIds=[]){
+  const ids=new Set([...items.map(item=>item.id),...deletedIds]);
+  const pendingIds=new Set(S.pendingWrites.filter(item=>item.kind===kind).map(item=>item.id));
+  const current=kind==='lessons'?S.lessons:studentsWithGroupMemberships();
+  const freshPending=current.filter(item=>pendingIds.has(item.id)&&!ids.has(item.id));
+  if(!queuePendingDocuments(kind,[...items,...freshPending])||!queuePendingDeletes(kind,deletedIds)){
+    toast('Данные сохранены локально, но очередь синхронизации не удалось сохранить');
+    return false;
+  }
+  const synced=await flushPendingWrites();
+  return Boolean(synced)&&![...S.pendingWrites].some(item=>item.kind===kind&&ids.has(item.id));
+}
 
 async function fetchRemote(kind){
   if(!S.db)return [];
@@ -1517,7 +1654,9 @@ async function loadAll(){
   const localL=localLessons(), localS=localStudents();
   const localG=(()=>{try{return JSON.parse(localStorage.getItem(LS.groups)||'[]')}catch{return []}})();
   if(!S.db){
-    S.lessons=localL; S.students=localS; S.groups=localG; return;
+    S.lessons=mergePendingRecords('lessons',localL);
+    S.students=mergePendingRecords('students',localS);
+    S.groups=localG; return;
   }
 
   const safeFetch=async(kind)=>{
@@ -1532,24 +1671,24 @@ async function loadAll(){
   const membershipGroups=rs.ok?groupsFromStudentMemberships(rs.data):[];
 
   if(rs.ok){
-    if(rs.data.length===0 && localS.length>0){
+    if(rs.data.length===0 && localS.length>0&&!S.pendingWrites.some(x=>x.kind==='students')){
       S.students=localS;
       try{await syncArrayToCollection('students',studentsWithGroupMemberships())}catch(e){console.error(e)}
     }else{
-      S.students=rs.data;
+      S.students=mergePendingRecords('students',rs.data);
       localStorage.setItem(LS.students,JSON.stringify(S.students));
     }
-  }else S.students=localS;
+  }else S.students=mergePendingRecords('students',localS);
 
   if(rl.ok){
-    if(rl.data.length===0 && localL.length>0){
+    if(rl.data.length===0 && localL.length>0&&!S.pendingWrites.some(x=>x.kind==='lessons')){
       S.lessons=localL;
       try{await syncArrayToCollection('lessons',S.lessons)}catch(e){console.error(e)}
     }else{
-      S.lessons=rl.data;
+      S.lessons=mergePendingRecords('lessons',rl.data);
       localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
     }
-  }else S.lessons=localL;
+  }else S.lessons=mergePendingRecords('lessons',localL);
 
   if(rg.ok&&rg.data.length){
     S.groups=rg.data;
@@ -1580,7 +1719,7 @@ function startRealtime(){
   S.unsubStudents=onSnapshot(
     query(collection(S.db,'students'),where('calendarId','==',FIREBASE_CALENDAR_ID)),
     snap=>{
-      S.students=snap.docs.map(d=>({...d.data(),id:d.id}));
+      S.students=mergePendingRecords('students',snap.docs.map(d=>({...d.data(),id:d.id})));
       const membershipGroups=groupsFromStudentMemberships(S.students);
       if(membershipGroups.length){
         S.groups=membershipGroups;
@@ -1596,8 +1735,9 @@ function startRealtime(){
   S.unsubLessons=onSnapshot(
     query(collection(S.db,'lessons'),where('calendarId','==',FIREBASE_CALENDAR_ID)),
     snap=>{
-      S.lessons=snap.docs.map(d=>({...d.data(),id:d.id}));
+      S.lessons=mergePendingRecords('lessons',snap.docs.map(d=>({...d.data(),id:d.id})));
       localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
+      void flushPendingWrites();
       render();
       updateFirebaseStatus();
     },
@@ -1643,25 +1783,55 @@ async function syncArrayToCollection(kind,items){
   if(ops>0)await batch.commit();
 }
 
-async function saveLessons(){
-  localStorage.setItem(LS.lessons,JSON.stringify(S.lessons));
-  if(S.db){
-    try{await syncArrayToCollection('lessons',S.lessons);S.firebaseReady=true}
-    catch(e){console.error(e);S.firebaseReady=false;toast('Сохранено локально, Firebase временно недоступен')}
-  }
+function changedDocuments(previous,current){
+  const oldById=new Map(previous.map(item=>[item.id,item]));
+  return current.filter(item=>!oldById.has(item.id)||JSON.stringify(oldById.get(item.id))!==JSON.stringify(item));
 }
-async function saveStudents(){
-  localStorage.setItem(LS.students,JSON.stringify(S.students));
-  if(S.db){
-    try{
-      await syncArrayToCollection('students',studentsWithGroupMemberships());
-      S.firebaseReady=true;
-    }catch(e){
-      console.error(e);
-      S.firebaseReady=false;
-      toast('Сохранено локально, Firebase временно недоступен');
-    }
+function deletedDocumentIds(previous,current){
+  const currentIds=new Set(current.map(item=>item.id));
+  return previous.filter(item=>!currentIds.has(item.id)).map(item=>item.id);
+}
+async function saveLessons(lessonIds=null){
+  const previous=localLessons();
+  const current=S.lessons;
+  try{
+    localStorage.setItem(LS.lessons,JSON.stringify(current));
+  }catch(e){
+    console.error('Local lessons save error',e);
+    toast('Не удалось сохранить уроки в этом браузере');
+    return {localSaved:false,synced:false};
   }
+  if(lessonIds!==null){
+    const ids=new Set(lessonIds);
+    const changed=current.filter(item=>ids.has(item.id));
+    const deleted=previous.filter(item=>ids.has(item.id)&&!current.some(now=>now.id===item.id)).map(item=>item.id);
+    return {localSaved:true,synced:await saveDocuments('lessons',changed,deleted)};
+  }
+  const changed=changedDocuments(previous,current);
+  const deleted=deletedDocumentIds(previous,current);
+  return {localSaved:true,synced:await saveDocuments('lessons',changed,deleted)};
+}
+async function saveStudents(studentIds=null){
+  const previous=localStudents();
+  const current=S.students;
+  try{
+    localStorage.setItem(LS.students,JSON.stringify(current));
+  }catch(e){
+    console.error('Local students save error',e);
+    toast('Не удалось сохранить карточки учеников в этом браузере');
+    return {localSaved:false,synced:false};
+  }
+  const currentWithGroups=studentsWithGroupMemberships();
+  const previousWithGroups=previous.map(st=>({...st,teacherGroups:groupMembershipPayloadForStudent(st.id)}));
+  if(studentIds!==null){
+    const ids=new Set(studentIds);
+    const changed=currentWithGroups.filter(item=>ids.has(item.id));
+    const deleted=previous.filter(item=>ids.has(item.id)&&!current.some(now=>now.id===item.id)).map(item=>item.id);
+    return {localSaved:true,synced:await saveDocuments('students',changed,deleted)};
+  }
+  const changed=changedDocuments(previousWithGroups,currentWithGroups);
+  const deleted=deletedDocumentIds(previous,current);
+  return {localSaved:true,synced:await saveDocuments('students',changed,deleted)};
 }
 async function migrateLocalNow(){
   if(!S.db)return toast('Firebase недоступен');
